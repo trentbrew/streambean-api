@@ -1,0 +1,36 @@
+{
+  "name": "express-template",
+  "version": "1.0.0",
+  "description": "Express.js template",
+  "main": "index.js",
+  "engines": {
+    "node": "18.x"
+  },
+  "scripts": {
+    "dev": "nodemon index.js",
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/trentbrew/iconic.git"
+  },
+  "keywords": [
+    "icons"
+  ],
+  "author": "Trent Brew",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/trentbrew/flycon/issues"
+  },
+  "homepage": "https://github.com/trentbrew/flycon#readme",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "ejs": "^3.1.8",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.20"
+  }
+}
