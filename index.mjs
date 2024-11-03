@@ -8,9 +8,9 @@ import dotenv from 'dotenv'
 import { fileURLToPath } from 'url'
 import { inject } from '@vercel/analytics'
 
-import { channels } from './helpers/channels.mjs'
 import categories from './helpers/defaults.mjs'
 import createSchedule from './helpers/scheduler.mjs'
+import { channels } from './helpers/channels.mjs'
 
 dotenv.config()
 
@@ -99,8 +99,6 @@ async function getBroadcasterSchedules(ids) {
   return schedulesArray.flat()
 }
 
-// TODO: maybe get rid of this
-
 async function adjustScheduleItems(scheduleItems, since, till) {
   const sortedItems = scheduleItems
     .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
@@ -124,8 +122,25 @@ async function adjustScheduleItems(scheduleItems, since, till) {
   return adjustedSchedule
 }
 
+async function fetchVideosByCategoryId(categoryId) {
+  try {
+    const videos = await fetchFromTwitch(`https://api.twitch.tv/helix/videos`, {
+      game_id: categoryId,
+      period: 'month',
+      sort: 'time',
+      first: 100,
+    })
+    console.log(`fetched ${videos.length} videos for category ID ${categoryId}`)
+    return videos
+  } catch (error) {
+    console.error(`Error fetching videos for category ID ${categoryId}:`, error)
+    return []
+  }
+}
+
 // ------------ ROUTES ------------
 
+// Render index
 app.get('/', (req, res) => {
   const iframeContent = `
         <!DOCTYPE html>
@@ -157,6 +172,7 @@ app.get('/', (req, res) => {
   res.send(iframeContent)
 })
 
+// Render player
 app.get('/player', (req, res) => {
   const channel = req.params.channel
   const video = req.query.video
@@ -214,6 +230,7 @@ app.get('/player', (req, res) => {
   res.send(htmlContent)
 })
 
+// Get streams by category
 app.get('/v1/streams/:category', async (req, res) => {
   console.log('Fetching streams...')
   try {
@@ -248,7 +265,6 @@ app.get('/v1/defaults/categories', (req, res) => {
 // ------------ CATEGORIES ------------
 
 // Search categories
-
 app.get('/v1/search/categories', async (req, res) => {
   console.log('Searching categories...')
   try {
@@ -273,7 +289,6 @@ app.get('/v1/search/categories', async (req, res) => {
 })
 
 // Get category by ID
-
 app.get('/v1/categories/:category_id', async (req, res) => {
   console.log('Fetching category by ID...')
   try {
@@ -295,7 +310,6 @@ app.get('/v1/categories/:category_id', async (req, res) => {
 // ------------ SCHEDULE ------------
 
 // Get schedule by broadcaster ID
-
 app.get('/v1/schedule/:broadcaster_id', async (req, res) => {
   console.log('Fetching scheduled streams...')
   try {
@@ -323,7 +337,6 @@ app.get('/v1/schedule/:broadcaster_id', async (req, res) => {
 })
 
 // Get schedule items
-
 app.get('/v1/scheduleitems', async (req, res) => {
   console.log('Fetching schedule items...')
   try {
@@ -356,7 +369,6 @@ app.get('/v1/scheduleitems', async (req, res) => {
 // ------------ VIDEOS ------------
 
 // Get videos by game ID
-
 app.get('/v1/videos/:game_id', async (req, res) => {
   console.log('Fetching videos...')
   try {
@@ -382,13 +394,11 @@ app.get('/v1/videos/:game_id', async (req, res) => {
 // ------------ CHANNELS ------------
 
 // List default channels
-
 app.get('/v1/channels', (req, res) => {
   return res.json(channels)
 })
 
 // Search channels
-
 app.get('/v1/search/channels', async (req, res) => {
   console.log('Searching channels...')
   try {
@@ -421,7 +431,6 @@ app.get('/v1/search/channels', async (req, res) => {
 // ------------ BROADCASTER ------------
 
 // Get broadcaster by ID
-
 app.get('/v1/broadcasters/:broadcaster_id', async (req, res) => {
   console.log('Fetching channel information...')
   try {
@@ -466,7 +475,6 @@ app.get('/v1/broadcasters/:broadcaster_id', async (req, res) => {
 // ------------ TIMESLOTS ------------
 
 // Get timeslots by category
-
 app.get('/v1/timeslots/:category_id', async (req, res) => {
   console.log('Fetching timeslots...')
   try {
@@ -474,12 +482,7 @@ app.get('/v1/timeslots/:category_id', async (req, res) => {
     if (!categoryId) {
       return res.status(400).json({ error: 'Category ID is required' })
     }
-    const videos = await fetchFromTwitch(`https://api.twitch.tv/helix/videos`, {
-      game_id: categoryId,
-      period: 'month',
-      sort: 'time',
-      first: 100,
-    })
+    const videos = await fetchVideosByCategoryId(categoryId)
     const schedule = createSchedule(videos, categoryId)
     console.log(`Fetched ${schedule.length} timeslots for category ID ${categoryId}`)
     res.json(schedule)
@@ -490,25 +493,19 @@ app.get('/v1/timeslots/:category_id', async (req, res) => {
 })
 
 // Get EPG (Aggregated timeslots for all channels)
-
 app.get('/v1/epg', async (req, res) => {
   try {
     const epg = []
-    for (const channel of channels) {
-      const categoryId = channel.id
-      const videos = await fetchFromTwitch(`https://api.twitch.tv/helix/videos`, {
-        game_id: categoryId,
-        period: 'month',
-        sort: 'time',
-        first: 100,
-      })
-      const schedule = createSchedule(videos, categoryId)
-      epg.push(...schedule)
-    }
+    const schedulePromises = channels.map(async (channel) => {
+      const videos = await fetchVideosByCategoryId(channel.uuid)
+      return createSchedule(videos, channel.uuid)
+    })
+    const schedulesArray = await Promise.all(schedulePromises)
+    epg.push(...schedulesArray.flat())
     console.log(`Fetched ${epg.length} timeslots for all channels`)
     res.json(epg)
   } catch (error) {
-    console.error('Error fetching EPG:', error)
+    console.error('Error fetching EPG')
     res.status(500).json({ error: 'Failed to fetch EPG' })
   }
 })
