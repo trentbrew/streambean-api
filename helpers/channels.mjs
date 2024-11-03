@@ -1,5 +1,6 @@
 export const channels = [
   {
+    id: 1,
     uuid: '509658',
     type: 'channel',
     title: 'Just Chatting',
@@ -9,6 +10,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 2,
     uuid: '32982',
     type: 'channel',
     title: 'Grant Theft Auto V',
@@ -18,6 +20,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 3,
     uuid: '21779',
     type: 'channel',
     title: 'League of Legends',
@@ -27,6 +30,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 4,
     uuid: '516575',
     type: 'channel',
     title: 'VALORANT',
@@ -36,6 +40,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 5,
     uuid: '32399',
     type: 'channel',
     title: 'Counter-Strike',
@@ -45,6 +50,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 6,
     uuid: '33214',
     type: 'channel',
     title: 'Fortnite',
@@ -54,6 +60,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 7,
     uuid: '27471',
     type: 'channel',
     title: 'Minecraft',
@@ -63,6 +70,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 8,
     uuid: '29595',
     type: 'channel',
     title: 'Dota 2',
@@ -72,6 +80,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 9,
     uuid: '18122',
     type: 'channel',
     title: 'World of Warcraft',
@@ -81,6 +90,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 10,
     uuid: '511224',
     type: 'channel',
     title: 'Apex Legends',
@@ -90,6 +100,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 11,
     uuid: '504461',
     type: 'channel',
     title: 'Super Smash Bros. Ultimate',
@@ -99,6 +110,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 12,
     uuid: '509660',
     type: 'channel',
     title: 'IRL',
@@ -108,6 +120,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 13,
     uuid: '26936',
     type: 'channel',
     title: 'Music',
@@ -117,6 +130,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 14,
     uuid: '509664',
     type: 'channel',
     title: 'Art',
@@ -126,6 +140,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 15,
     uuid: '518203',
     type: 'channel',
     title: 'Sports',
@@ -135,6 +150,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 16,
     uuid: '417752',
     type: 'channel',
     title: 'Talk Shows and Podcasts',
@@ -144,6 +160,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 17,
     uuid: '1469308723',
     type: 'channel',
     title: 'Software and Game Development',
@@ -153,6 +170,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 18,
     uuid: '509673',
     type: 'channel',
     title: 'Makers and Crafting',
@@ -162,6 +180,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 19,
     uuid: '509667',
     type: 'channel',
     title: 'Food and Drink',
@@ -171,6 +190,7 @@ export const channels = [
     year: 2024,
   },
   {
+    id: 20,
     uuid: '772157971',
     type: 'channel',
     title: 'Writing and Reading',

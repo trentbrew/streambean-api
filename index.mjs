@@ -1,3 +1,5 @@
+// TODO: dry, modularize, test, refactor
+
 import express from 'express'
 import bodyParser from 'body-parser'
 import path from 'path'
@@ -128,6 +130,7 @@ async function fetchVideosByCategoryId(categoryId) {
       game_id: categoryId,
       period: 'month',
       sort: 'time',
+      language: 'en',
       first: 100,
     })
     console.log(`fetched ${videos.length} videos for category ID ${categoryId}`)
@@ -173,11 +176,10 @@ app.get('/', (req, res) => {
 })
 
 // Render player
-app.get('/player', (req, res) => {
-  const channel = req.params.channel
-  const video = req.query.video
-  if (channel && video) {
-    return res.status(400).json({ error: 'Channel and video cannot be provided at the same time' })
+app.get('/player/channel/:channel_id', (req, res) => {
+  const channel = req.params.channel_id
+  if (!channel) {
+    return res.status(400).json({ error: 'Channel ID is required' })
   }
   const htmlContent = `
         <!DOCTYPE html>
@@ -185,7 +187,7 @@ app.get('/player', (req, res) => {
           <head>
             <meta charset="UTF-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <title>Streambean Player | ${channel || video}</title>
+            <title>Streambean Player | ${channel_id}</title>
             <style>
               body,
               html {
@@ -217,8 +219,7 @@ app.get('/player', (req, res) => {
             </script>
             <script type="text/javascript">
               new Twitch.Player('twitch-embed', {
-                ${channel ? `channel: '${channel}'` : ''}
-                ${video ? `video: '${video}'` : ''}
+                channel: '${channel_id}',
                 width: '100%',
                 height: '100%',
                 allowfullscreen: true,
@@ -228,6 +229,42 @@ app.get('/player', (req, res) => {
         </html>
       `
   res.send(htmlContent)
+})
+
+app.get('/player/video/:video_id', (req, res) => {
+  const videoId = req.params.video_id
+  if (!videoId) {
+    return res.status(400).json({ error: 'Video ID is required' })
+  }
+  const videoUrl = `https://player.twitch.tv/?video=${videoId}&parent=${req.hostname}`
+  const iframeContent = `
+        <!DOCTYPE html>
+        <html lang="en">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>Streambean API</title>
+            <style>
+              body,
+              html {
+                margin: 0;
+                padding: 0;
+                height: 100%;
+                overflow: hidden;
+              }
+              iframe {
+                width: 100%;
+                height: 100%;
+                border: none;
+              }
+            </style>
+          </head>
+          <body>
+            <iframe src="${videoUrl}" frameborder="0" allowfullscreen></iframe>
+          </body>
+        </html>
+      `
+  res.send(iframeContent)
 })
 
 // Get streams by category
@@ -498,12 +535,20 @@ app.get('/v1/epg', async (req, res) => {
     const epg = []
     const schedulePromises = channels.map(async (channel) => {
       const videos = await fetchVideosByCategoryId(channel.uuid)
-      return createSchedule(videos, channel.uuid)
+      const schedule = createSchedule(videos, channel.uuid)
+      console.log(`scheduled ${schedule.length} timeslots for ${channel.title}`)
+      return schedule
     })
     const schedulesArray = await Promise.all(schedulePromises)
     epg.push(...schedulesArray.flat())
     console.log(`Fetched ${epg.length} timeslots for all channels`)
-    res.json(epg)
+    res.json(
+      epg.filter((item) => {
+        const itemDate = new Date(item.since)
+        const today = new Date()
+        return itemDate.toDateString() === today.toDateString()
+      }),
+    )
   } catch (error) {
     console.error('Error fetching EPG')
     res.status(500).json({ error: 'Failed to fetch EPG' })

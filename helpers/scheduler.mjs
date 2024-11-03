@@ -1,3 +1,4 @@
+import { addDays, addHours, endOfDay, format, startOfDay, subDays } from 'date-fns'
 import { v4 as uuidv4 } from 'uuid'
 import { channels } from './channels.mjs'
 
@@ -66,6 +67,9 @@ function createSchedule(vods, category) {
   const currentDate = new Date()
   currentDate.setHours(0, 0, 0, 0) // Set current date to midnight
 
+  const startOfCurrentDay = startOfDay(currentDate)
+  const endOfCurrentDay = endOfDay(currentDate)
+
   for (let i = 0; currentTime < totalDuration; i++) {
     const vod = vods[i % vods.length]
 
@@ -81,40 +85,43 @@ function createSchedule(vods, category) {
     const startDateTime = new Date(currentDate.getTime() + currentTime * 1000)
     const endDateTime = new Date(currentDate.getTime() + endTime * 1000)
 
-    schedule.push({
-      id: uuidv4(),
-      description: vod.title || 'No description available',
-      title: vod.title,
-      since: startDateTime.toISOString(),
-      till: endDateTime.toISOString(),
-      channelUuid: category,
-      image: vod.thumbnailUrl?.replace('%{width}', '1066')?.replace('%{height}', '600'),
-      country: 'United States',
-      Year: new Date().getFullYear().toString(),
-      Rated: 0,
-      Released: vod.created_at || vod.published_at,
-      Runtime: vod.duration,
-      Genre: channels.find((channel) => channel.uuid === category).title,
-      Director: vod.user_login,
-      Writer: 'N/A',
-      Actors: 'N/A',
-      Language: vod.language,
-      Awards: 'N/A',
-      Metascore: 'N/A',
-      imdbRating: 'N/A',
-      imdbVotes: 'N/A',
-      imdbID: vod.id,
-      Type: 'movie',
-      totalSeasons: 'N/A',
-      Response: 'True',
-      Ratings: [
-        {
-          Source: 'N/A',
-          Value: 'N/A',
-        },
-      ],
-      rating: 3,
-    })
+    // Ensure scheduled items are within the current day
+    if (startDateTime >= startOfCurrentDay && endDateTime <= endOfCurrentDay) {
+      schedule.push({
+        id: vod.id,
+        description: vod.title || 'No description available',
+        title: vod.title,
+        since: startDateTime.toISOString(),
+        till: endDateTime.toISOString(),
+        channelUuid: category,
+        image: vod.thumbnailUrl?.replace('%{width}', '1066')?.replace('%{height}', '600'),
+        country: 'United States',
+        Year: new Date().getFullYear().toString(),
+        Rated: 0,
+        Released: vod.created_at || vod.published_at,
+        Runtime: vod.duration,
+        Genre: channels.find((channel) => channel.uuid === category).title,
+        Director: vod.user_login,
+        Writer: 'N/A',
+        Actors: 'N/A',
+        Language: vod.language,
+        Awards: 'N/A',
+        Metascore: 'N/A',
+        imdbRating: 'N/A',
+        imdbVotes: 'N/A',
+        imdbID: 'N/A',
+        Type: 'movie',
+        totalSeasons: 'N/A',
+        Response: 'True',
+        Ratings: [
+          {
+            Source: 'N/A',
+            Value: 'N/A',
+          },
+        ],
+        rating: 3,
+      })
+    }
 
     currentTime = endTime
   }
