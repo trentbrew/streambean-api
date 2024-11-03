@@ -8,8 +8,9 @@ import dotenv from 'dotenv'
 import { fileURLToPath } from 'url'
 import { inject } from '@vercel/analytics'
 
+import { channels } from './helpers/channels.mjs'
 import categories from './helpers/defaults.mjs'
-import createSchedule from './helpers/epg.mjs'
+import createSchedule from './helpers/scheduler.mjs'
 
 dotenv.config()
 
@@ -156,15 +157,19 @@ app.get('/', (req, res) => {
   res.send(iframeContent)
 })
 
-app.get('/player/:channel_name', (req, res) => {
-  const channel = req.params.channel_name
+app.get('/player', (req, res) => {
+  const channel = req.params.channel
+  const video = req.query.video
+  if (channel && video) {
+    return res.status(400).json({ error: 'Channel and video cannot be provided at the same time' })
+  }
   const htmlContent = `
         <!DOCTYPE html>
         <html lang="en">
           <head>
             <meta charset="UTF-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <title>Streambean Player | ${channel}</title>
+            <title>Streambean Player | ${channel || video}</title>
             <style>
               body,
               html {
@@ -196,7 +201,8 @@ app.get('/player/:channel_name', (req, res) => {
             </script>
             <script type="text/javascript">
               new Twitch.Player('twitch-embed', {
-                channel: '${channel}',
+                ${channel ? `channel: '${channel}'` : ''}
+                ${video ? `video: '${video}'` : ''}
                 width: '100%',
                 height: '100%',
                 allowfullscreen: true,
@@ -375,6 +381,12 @@ app.get('/v1/videos/:game_id', async (req, res) => {
 
 // ------------ CHANNELS ------------
 
+// List default channels
+
+app.get('/v1/channels', (req, res) => {
+  return res.json(channels)
+})
+
 // Search channels
 
 app.get('/v1/search/channels', async (req, res) => {
@@ -464,6 +476,9 @@ app.get('/v1/timeslots/:category_id', async (req, res) => {
     }
     const videos = await fetchFromTwitch(`https://api.twitch.tv/helix/videos`, {
       game_id: categoryId,
+      period: 'month',
+      sort: 'time',
+      first: 100,
     })
     const schedule = createSchedule(videos, categoryId)
     console.log(`Fetched ${schedule.length} timeslots for category ID ${categoryId}`)
@@ -471,6 +486,30 @@ app.get('/v1/timeslots/:category_id', async (req, res) => {
   } catch (error) {
     console.error('Error fetching timeslots:', error)
     res.status(500).json({ error: 'Failed to fetch timeslots' })
+  }
+})
+
+// Get EPG (Aggregated timeslots for all channels)
+
+app.get('/v1/epg', async (req, res) => {
+  try {
+    const epg = []
+    for (const channel of channels) {
+      const categoryId = channel.id
+      const videos = await fetchFromTwitch(`https://api.twitch.tv/helix/videos`, {
+        game_id: categoryId,
+        period: 'month',
+        sort: 'time',
+        first: 100,
+      })
+      const schedule = createSchedule(videos, categoryId)
+      epg.push(...schedule)
+    }
+    console.log(`Fetched ${epg.length} timeslots for all channels`)
+    res.json(epg)
+  } catch (error) {
+    console.error('Error fetching EPG:', error)
+    res.status(500).json({ error: 'Failed to fetch EPG' })
   }
 })
 
