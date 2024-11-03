@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
+import { channels } from './channels.mjs'
 
 /**
  * Parses a duration string (e.g., "1h2m3s") into seconds.
@@ -72,9 +73,11 @@ function createSchedule(vods, category) {
       throw new Error('Invalid VOD object or missing duration')
     }
 
+    // Parse duration
     const duration = parseDuration(vod.duration)
     const endTime = Math.min(currentTime + duration, totalDuration)
 
+    // Create start and end dates
     const startDateTime = new Date(currentDate.getTime() + currentTime * 1000)
     const endDateTime = new Date(currentDate.getTime() + endTime * 1000)
 
@@ -88,14 +91,14 @@ function createSchedule(vods, category) {
       image: vod.thumbnailUrl?.replace('%{width}', '1066')?.replace('%{height}', '600'),
       country: 'United States',
       Year: new Date().getFullYear().toString(),
-      Rated: 'N/A',
-      Released: startDateTime.toISOString().slice(0, 10),
+      Rated: 0,
+      Released: vod.created_at || vod.published_at,
       Runtime: vod.duration,
-      Genre: 'Sports',
-      Director: 'N/A',
+      Genre: channels.find((channel) => channel.uuid === category).title,
+      Director: vod.user_login,
       Writer: 'N/A',
       Actors: 'N/A',
-      Language: 'English',
+      Language: vod.language,
       Awards: 'N/A',
       Metascore: 'N/A',
       imdbRating: 'N/A',
@@ -104,14 +107,17 @@ function createSchedule(vods, category) {
       Type: 'movie',
       totalSeasons: 'N/A',
       Response: 'True',
-      Ratings: [],
-      rating: 2,
+      Ratings: [
+        {
+          Source: 'N/A',
+          Value: 'N/A',
+        },
+      ],
+      rating: 3,
     })
 
     currentTime = endTime
   }
-
-  console.log('schedule: ', schedule)
   return schedule
 }
 

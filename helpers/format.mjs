@@ -1,8 +1,3 @@
-import fs from 'fs'
-import path from 'path'
-
-const filePath = path.join(__dirname, '../snapshots/509658.json')
-
 function getSecondsFromDuration(duration) {
   const timeParts = duration.match(/(\d+h)?(\d+m)?(\d+s)?/)
   let seconds = 0
@@ -20,16 +15,10 @@ function getSecondsFromDuration(duration) {
   return seconds
 }
 
-function extractSecondsFromJson(filePath) {
-  const data = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+function extractSecondsFromJson() {
+  const data = JSON.parse(json)
   return data.map((item) => getSecondsFromDuration(item.duration))
 }
-
-const secondsArray = extractSecondsFromJson(filePath)
-console.log(secondsArray)
-
-const totalSeconds = secondsArray.reduce((acc, curr) => acc + curr, 0)
-console.log('Total seconds:', totalSeconds)
 
 function formatSecondsToHHMMSS(totalSeconds) {
   const hours = Math.floor(totalSeconds / 3600)
@@ -39,7 +28,12 @@ function formatSecondsToHHMMSS(totalSeconds) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-const formattedTime = formatSecondsToHHMMSS(totalSeconds)
-console.log('Total time (HH:MM:SS):', formattedTime)
+function getTimespan(json) {
+  const secondsArray = extractSecondsFromJson(filePath)
+  console.log(secondsArray)
 
-export { getSecondsFromDuration, formatSecondsToHHMMSS }
+  const totalSeconds = secondsArray.reduce((acc, curr) => acc + curr, 0)
+  console.log('Total seconds:', totalSeconds)
+}
+
+export { getTimespan }

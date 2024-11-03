@@ -5,11 +5,11 @@ import cors from 'cors'
 import axios from 'axios'
 import timeout from 'connect-timeout'
 import dotenv from 'dotenv'
-import { inject } from '@vercel/analytics'
 import { fileURLToPath } from 'url'
+import { inject } from '@vercel/analytics'
 
-import categories from './defaults.mjs'
-import createSchedule from './helpers/create_schedule.mjs'
+import categories from './helpers/defaults.mjs'
+import createSchedule from './helpers/epg.mjs'
 
 dotenv.config()
 
@@ -308,6 +308,7 @@ app.get('/v1/schedule/:broadcaster_id', async (req, res) => {
       title: segment.title,
       isRecurring: segment.is_recurring,
     }))
+    console.log(`Fetched ${formattedSchedule.length} schedule items`)
     return res.json(formattedSchedule)
   } catch (error) {
     console.error('Error fetching scheduled streams:', error)
@@ -338,8 +339,7 @@ app.get('/v1/scheduleitems', async (req, res) => {
       return res.json({ timeslots: [] })
     }
     const scheduleItems = await getBroadcasterSchedules(broadcasterIds)
-    const adjustedSchedule = await adjustScheduleItems(scheduleItems, since, till)
-    // return res.json(adjustedSchedule);
+    console.log(`Fetched ${scheduleItems.length} schedule items`)
     return res.json(scheduleItems)
   } catch (error) {
     console.error('Error fetching timeslots:', error)
@@ -361,16 +361,12 @@ app.get('/v1/videos/:game_id', async (req, res) => {
     const videos = await fetchFromTwitch(`https://api.twitch.tv/helix/videos?game_id=${game_id}`, {
       first: 100,
     })
-    const formattedVideos = videos.map((video) => ({
-      id: video.id,
-      title: video.title,
-      thumbnailUrl: video.thumbnail_url,
-      url: video.url,
-      publishedAt: video.published_at,
-      duration: video.duration,
-      viewCount: video.view_count,
+    const adjustedVideos = videos.map((video) => ({
+      ...video,
+      thumbnail_url: video.thumbnail_url?.replace('{width}', '960')?.replace('{height}', '540'),
     }))
-    return res.json(formattedVideos)
+    console.log(`Fetched ${videos.length} videos for game ID ${game_id}`)
+    return res.json(adjustedVideos)
   } catch (error) {
     console.error('Error fetching videos:', error)
     return res.status(500).json({ error: 'Failed to fetch videos' })
@@ -402,6 +398,7 @@ app.get('/v1/search/channels', async (req, res) => {
       gameId: channel.game_id,
       gameName: channel.game_name,
     }))
+    console.log(`Fetched ${formattedChannels.length} channels`)
     return res.json(formattedChannels)
   } catch (error) {
     console.error('Error searching channels:', error)
@@ -469,6 +466,7 @@ app.get('/v1/timeslots/:category_id', async (req, res) => {
       game_id: categoryId,
     })
     const schedule = createSchedule(videos, categoryId)
+    console.log(`Fetched ${schedule.length} timeslots for category ID ${categoryId}`)
     res.json(schedule)
   } catch (error) {
     console.error('Error fetching timeslots:', error)
