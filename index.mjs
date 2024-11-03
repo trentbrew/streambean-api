@@ -133,11 +133,13 @@ async function fetchVideosByCategoryId(categoryId) {
       language: 'en',
       first: 100,
     })
+
+    // Return the videos array directly instead of stringifying it
     console.log(`fetched ${videos.length} videos for category ID ${categoryId}`)
     return videos
   } catch (error) {
     console.error(`Error fetching videos for category ID ${categoryId}:`, error)
-    return []
+    return [] // Return empty array instead of stringifying it
   }
 }
 
@@ -519,8 +521,14 @@ app.get('/v1/timeslots/:category_id', async (req, res) => {
     if (!categoryId) {
       return res.status(400).json({ error: 'Category ID is required' })
     }
+
+    // Videos are now returned as an array, not a JSON string
     const videos = await fetchVideosByCategoryId(categoryId)
-    const schedule = createSchedule(videos, categoryId)
+
+    // Make sure videos is always an array
+    const videoArray = Array.isArray(videos) ? videos : []
+
+    const schedule = createSchedule(videoArray, categoryId)
     console.log(`Fetched ${schedule.length} timeslots for category ID ${categoryId}`)
     res.json(schedule)
   } catch (error) {
@@ -535,13 +543,19 @@ app.get('/v1/epg', async (req, res) => {
     const epg = []
     const schedulePromises = channels.map(async (channel) => {
       const videos = await fetchVideosByCategoryId(channel.uuid)
-      const schedule = createSchedule(videos, channel.uuid)
+
+      // Make sure videos is always an array
+      const videoArray = Array.isArray(videos) ? videos : []
+
+      const schedule = createSchedule(videoArray, channel.uuid)
       console.log(`scheduled ${schedule.length} timeslots for ${channel.title}`)
       return schedule
     })
+
     const schedulesArray = await Promise.all(schedulePromises)
     epg.push(...schedulesArray.flat())
     console.log(`Fetched ${epg.length} timeslots for all channels`)
+
     res.json(
       epg.filter((item) => {
         const itemDate = new Date(item.since)
@@ -550,7 +564,7 @@ app.get('/v1/epg', async (req, res) => {
       }),
     )
   } catch (error) {
-    console.error('Error fetching EPG')
+    console.error('Error fetching EPG:', error)
     res.status(500).json({ error: 'Failed to fetch EPG' })
   }
 })
