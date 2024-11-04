@@ -212,7 +212,7 @@ app.get('/player/channel/:channel_id', (req, res) => {
               window.addEventListener(
                 'error',
                 function (event) {
-                  if (event.message.includes('aria-hidden')) {
+                  if (event.message?.includes('aria-hidden')) {
                     event.preventDefault();
                   }
                 },
@@ -290,7 +290,7 @@ app.get('/v1/streams/:category', async (req, res) => {
       player_url: `${BASE_URL}/player/${stream.user_login}`,
       thumbnail_url: stream.thumbnail_url?.replace('{width}', '960')?.replace('{height}', '540'),
     }))
-    return res.json(enrichedStreams)
+    return res.json(enrichedStreams || [])
   } catch (error) {
     console.error('Error fetching Twitch streams:', error)
     return res.status(500).json({ error: 'Failed to fetch streams' })
@@ -298,7 +298,7 @@ app.get('/v1/streams/:category', async (req, res) => {
 })
 
 app.get('/v1/defaults/categories', (req, res) => {
-  return res.json(categories)
+  return res.json(categories || [])
 })
 
 // ------------ CATEGORIES ------------
@@ -339,7 +339,7 @@ app.get('/v1/categories/:category_id', async (req, res) => {
     if (!category) {
       return res.status(404).json({ error: 'Category not found' })
     }
-    return res.json(category)
+    return res.json(category || [])
   } catch (error) {
     console.error('Error fetching category by ID:', error)
     return res.status(500).json({ error: 'Failed to fetch category' })
@@ -368,7 +368,7 @@ app.get('/v1/schedule/:broadcaster_id', async (req, res) => {
       isRecurring: segment.is_recurring,
     }))
     console.log(`Fetched ${formattedSchedule.length} schedule items`)
-    return res.json(formattedSchedule)
+    return res.json(formattedSchedule || [])
   } catch (error) {
     console.error('Error fetching scheduled streams:', error)
     return res.status(500).json({ error: 'Failed to fetch scheduled streams' })
@@ -415,16 +415,13 @@ app.get('/v1/videos/:game_id', async (req, res) => {
     if (!game_id) {
       return res.status(400).json({ error: 'Game ID is required' })
     }
-    const videosResponse = await fetchFromTwitch(`https://api.twitch.tv/helix/videos?game_id=${game_id}`, {
-      first: 100,
-    })
-    const videos = JSON.parse(videosResponse)
+    const videos = await fetchVideosByCategoryId(game_id)
     const adjustedVideos = videos.map((video) => ({
       ...video,
       thumbnail_url: video.thumbnail_url?.replace('{width}', '960')?.replace('{height}', '540'),
     }))
     console.log(`Fetched ${videos.length} videos for game ID ${game_id}`)
-    return res.json(adjustedVideos)
+    return res.json(adjustedVideos || [])
   } catch (error) {
     console.error('Error fetching videos:', error)
     return res.status(500).json({ error: 'Failed to fetch videos' })
@@ -435,7 +432,7 @@ app.get('/v1/videos/:game_id', async (req, res) => {
 
 // List default channels
 app.get('/v1/channels', (req, res) => {
-  return res.json(channels)
+  return res.json(channels || [])
 })
 
 // Search channels
@@ -461,7 +458,7 @@ app.get('/v1/search/channels', async (req, res) => {
       gameName: channel.game_name,
     }))
     console.log(`Fetched ${formattedChannels.length} channels`)
-    return res.json(formattedChannels)
+    return res.json(formattedChannels || [])
   } catch (error) {
     console.error('Error searching channels:', error)
     return res.status(500).json({ error: 'Failed to search channels' })
@@ -531,7 +528,7 @@ app.get('/v1/timeslots/:category_id', async (req, res) => {
 
     const schedule = createSchedule(videoArray, categoryId)
     console.log(`Fetched ${schedule.length} timeslots for category ID ${categoryId}`)
-    res.json(schedule)
+    res.json(schedule || [])
   } catch (error) {
     console.error('Error fetching timeslots:', error)
     res.status(500).json({ error: 'Failed to fetch timeslots' })
@@ -558,11 +555,11 @@ app.get('/v1/epg', async (req, res) => {
     console.log(`Fetched ${epg.length} timeslots for all channels`)
 
     res.json(
-      epg.filter((item) => {
+      epg?.filter((item) => {
         const itemDate = new Date(item.since)
         const today = new Date()
         return itemDate.toDateString() === today.toDateString()
-      }),
+      }) || [],
     )
   } catch (error) {
     console.error('Error fetching EPG:', error)
@@ -588,7 +585,7 @@ app.post('/auth/twitch/callback', async (req, res) => {
         code,
         code_verifier,
         grant_type: 'authorization_code',
-        redirect_uri: process.env.NODE_ENV === 'production' ? 'https://streambean.tv/auth/callback' : 'http://localhost:8080/auth/callback',
+        redirect_uri: process.env.NODE_ENV === 'production' ? 'https://watch.streambean.tv/auth/callback' : 'http://localhost:8080/auth/callback',
       },
     })
     res.json(response.data)
