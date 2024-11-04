@@ -9,10 +9,10 @@ import timeout from 'connect-timeout'
 import dotenv from 'dotenv'
 import { fileURLToPath } from 'url'
 import { inject } from '@vercel/analytics'
-
+import { channels } from './helpers/channels.mjs'
 import categories from './helpers/defaults.mjs'
 import createSchedule from './helpers/scheduler.mjs'
-import { channels } from './helpers/channels.mjs'
+import pocketbase from './services/pocketbase.mjs'
 
 dotenv.config()
 
@@ -129,7 +129,7 @@ async function fetchVideosByCategoryId(categoryId) {
     const videos = await fetchFromTwitch(`https://api.twitch.tv/helix/videos`, {
       game_id: categoryId,
       period: 'month',
-      sort: 'time',
+      sort: 'views',
       language: 'en',
       first: 100,
     })
@@ -415,9 +415,10 @@ app.get('/v1/videos/:game_id', async (req, res) => {
     if (!game_id) {
       return res.status(400).json({ error: 'Game ID is required' })
     }
-    const videos = await fetchFromTwitch(`https://api.twitch.tv/helix/videos?game_id=${game_id}`, {
+    const videosResponse = await fetchFromTwitch(`https://api.twitch.tv/helix/videos?game_id=${game_id}`, {
       first: 100,
     })
+    const videos = JSON.parse(videosResponse)
     const adjustedVideos = videos.map((video) => ({
       ...video,
       thumbnail_url: video.thumbnail_url?.replace('{width}', '960')?.replace('{height}', '540'),
@@ -566,6 +567,34 @@ app.get('/v1/epg', async (req, res) => {
   } catch (error) {
     console.error('Error fetching EPG:', error)
     res.status(500).json({ error: 'Failed to fetch EPG' })
+  }
+})
+
+// ------------ AUTH ------------
+
+// backend auth routes
+app.post('/auth/twitch/callback', async (req, res) => {
+  const { code, code_verifier } = req.body
+
+  if (!code || !code_verifier) {
+    return res.status(400).json({ error: 'Missing required parameters' })
+  }
+
+  try {
+    const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
+      params: {
+        client_id: process.env.TWITCH_CLIENT_ID,
+        client_secret: process.env.TWITCH_CLIENT_SECRET,
+        code,
+        code_verifier,
+        grant_type: 'authorization_code',
+        redirect_uri: process.env.NODE_ENV === 'production' ? 'https://streambean.tv/auth/callback' : 'http://localhost:8080/auth/callback',
+      },
+    })
+    res.json(response.data)
+  } catch (error) {
+    console.error('Token exchange failed:', error.message)
+    res.status(500).json({ error: 'Authentication failed' })
   }
 })
 
