@@ -1,4 +1,4 @@
-// TODO: dry, modularize, test, refactor
+// index.mjs
 
 import express from 'express'
 import bodyParser from 'body-parser'
@@ -9,10 +9,10 @@ import timeout from 'connect-timeout'
 import dotenv from 'dotenv'
 import { fileURLToPath } from 'url'
 import { inject } from '@vercel/analytics'
+
 import { channels } from './helpers/channels.mjs'
 import categories from './helpers/defaults.mjs'
 import createSchedule from './helpers/scheduler.mjs'
-import pocketbase from './services/pocketbase.mjs'
 
 dotenv.config()
 
@@ -42,7 +42,13 @@ let twitchAccessToken = null
 async function getTwitchAccessToken() {
   console.log('Getting Twitch access token...')
   try {
-    const response = await axios.post(`https://id.twitch.tv/oauth2/token?client_id=${TWITCH_CLIENT_ID}&client_secret=${TWITCH_CLIENT_SECRET}&grant_type=client_credentials`)
+    const response = await axios.post(`https://id.twitch.tv/oauth2/token`, null, {
+      params: {
+        client_id: TWITCH_CLIENT_ID,
+        client_secret: TWITCH_CLIENT_SECRET,
+        grant_type: 'client_credentials',
+      },
+    })
     twitchAccessToken = response.data.access_token
     return twitchAccessToken
   } catch (error) {
@@ -58,15 +64,25 @@ async function fetchFromTwitch(url, params = {}) {
   if (!twitchAccessToken) {
     throw new Error('Failed to get access token')
   }
-  const response = await axios.get(url, {
-    headers: {
-      'Client-ID': TWITCH_CLIENT_ID,
-      Authorization: `Bearer ${twitchAccessToken}`,
-      'Content-Type': 'application/json',
-    },
-    params,
-  })
-  return JSON.parse(JSON.stringify(response.data.data))
+  try {
+    const response = await axios.get(url, {
+      headers: {
+        'Client-ID': TWITCH_CLIENT_ID,
+        Authorization: `Bearer ${twitchAccessToken}`,
+        'Content-Type': 'application/json',
+      },
+      params,
+    })
+    return response.data.data || []
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      // Token might have expired, refresh it
+      twitchAccessToken = await getTwitchAccessToken()
+      return fetchFromTwitch(url, params)
+    } else {
+      throw error
+    }
+  }
 }
 
 function getBroadcasterIds(responseArray) {
@@ -84,7 +100,7 @@ async function getBroadcasterSchedules(ids) {
             broadcaster_id: id,
             since: start_time,
             till: end_time,
-            channelUuid: rest.category.id,
+            channelUuid: rest.category?.id,
             ...rest,
           }
         }) || []
@@ -102,47 +118,32 @@ async function getBroadcasterSchedules(ids) {
   return schedulesArray.flat()
 }
 
-async function adjustScheduleItems(scheduleItems, since, till) {
-  const sortedItems = scheduleItems
-    .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
-    .filter((item) => new Date(item.start_time) >= new Date(since) && new Date(item.end_time) <= new Date(till))
-  const adjustedSchedule = []
-  for (const item of sortedItems) {
-    if (adjustedSchedule.length === 0) {
-      adjustedSchedule.push(item)
-      continue
-    }
-    const lastItem = adjustedSchedule[adjustedSchedule.length - 1]
-    const lastEnd = new Date(lastItem.end_time).getTime()
-    const currentStart = new Date(item.start_time).getTime()
-    if (currentStart < lastEnd) {
-      item.start_time = new Date(lastEnd).toISOString()
-    }
-    if (!(item.start_time === lastItem.start_time && item.end_time === lastItem.end_time)) {
-      adjustedSchedule.push(item)
-    }
-  }
-  return adjustedSchedule
-}
-
 async function fetchVideosByCategoryId(categoryId) {
   try {
     const videos = await fetchFromTwitch(`https://api.twitch.tv/helix/videos`, {
       game_id: categoryId,
       period: 'month',
-      sort: 'views',
+      sort: 'time',
       language: 'en',
       first: 100,
     })
 
-    // Return the videos array directly instead of stringifying it
-    console.log(`fetched ${videos.length} videos for category ID ${categoryId}`)
+    console.log(`Fetched ${videos.length} videos for category ID ${categoryId}`)
     return videos
   } catch (error) {
     console.error(`Error fetching videos for category ID ${categoryId}:`, error)
-    return [] // Return empty array instead of stringifying it
+    return []
   }
 }
+
+// Middleware to handle JSON parsing errors
+app.use(function (err, req, res, next) {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('Bad JSON:', err.message)
+    return res.status(400).json({ error: 'Invalid JSON' })
+  }
+  next()
+})
 
 // ------------ ROUTES ------------
 
@@ -190,7 +191,7 @@ app.get('/player/channel/:channel_id', (req, res) => {
           <head>
             <meta charset="UTF-8" />
             <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <title>Streambean Player | ${channel_id}</title>
+            <title>Streambean Player | ${channel}</title>
             <style>
               body,
               html {
@@ -222,7 +223,7 @@ app.get('/player/channel/:channel_id', (req, res) => {
             </script>
             <script type="text/javascript">
               new Twitch.Player('twitch-embed', {
-                channel: '${channel_id}',
+                channel: '${channel}',
                 width: '100%',
                 height: '100%',
                 allowfullscreen: true,
@@ -278,17 +279,26 @@ app.get('/v1/streams/:category', async (req, res) => {
     if (!category) {
       return res.status(400).json({ error: 'Category is required' })
     }
-    const streams =
-      category === 'top'
-        ? await fetchFromTwitch('https://api.twitch.tv/helix/streams', {
-            first: 100,
-          })
-        : await fetchFromTwitch(`https://api.twitch.tv/helix/streams?game_id=${categories[category].id}`, {
-            first: 100,
-          })
+
+    let streams
+    if (category === 'top') {
+      streams = await fetchFromTwitch('https://api.twitch.tv/helix/streams', {
+        first: 100,
+      })
+    } else {
+      const categoryData = categories[category]
+      if (!categoryData) {
+        return res.status(400).json({ error: 'Invalid category' })
+      }
+      streams = await fetchFromTwitch('https://api.twitch.tv/helix/streams', {
+        game_id: categoryData.id,
+        first: 100,
+      })
+    }
+
     const enrichedStreams = streams.map((stream) => ({
       ...stream,
-      player_url: `${BASE_URL}/player/${stream.user_login}`,
+      player_url: `${BASE_URL}/player/channel/${stream.user_login}`,
       thumbnail_url: stream.thumbnail_url?.replace('{width}', '960')?.replace('{height}', '540'),
     }))
     return res.json(enrichedStreams || [])
@@ -301,8 +311,6 @@ app.get('/v1/streams/:category', async (req, res) => {
 app.get('/v1/defaults/categories', (req, res) => {
   return res.json(categories || [])
 })
-
-// ------------ CATEGORIES ------------
 
 // Search categories
 app.get('/v1/search/categories', async (req, res) => {
@@ -347,8 +355,6 @@ app.get('/v1/categories/:category_id', async (req, res) => {
   }
 })
 
-// ------------ SCHEDULE ------------
-
 // Get schedule by broadcaster ID
 app.get('/v1/schedule/:broadcaster_id', async (req, res) => {
   console.log('Fetching scheduled streams...')
@@ -357,17 +363,18 @@ app.get('/v1/schedule/:broadcaster_id', async (req, res) => {
     if (!broadcasterId) {
       return res.status(400).json({ error: 'Broadcaster ID is required' })
     }
-    const schedule = await fetchFromTwitch(`https://api.twitch.tv/helix/schedule?broadcaster_id=${broadcasterId}`).catch((error) => {
+    const scheduleData = await fetchFromTwitch('https://api.twitch.tv/helix/schedule', { broadcaster_id: broadcasterId }).catch((error) => {
       console.error('Error fetching scheduled streams:', error)
       return []
     })
-    const formattedSchedule = schedule?.segments?.map((segment) => ({
-      id: segment.id,
-      startTime: segment.start_time,
-      endTime: segment.end_time,
-      title: segment.title,
-      isRecurring: segment.is_recurring,
-    }))
+    const formattedSchedule =
+      scheduleData?.segments?.map((segment) => ({
+        id: segment.id,
+        startTime: segment.start_time,
+        endTime: segment.end_time,
+        title: segment.title,
+        isRecurring: segment.is_recurring,
+      })) || []
     console.log(`Fetched ${formattedSchedule.length} schedule items`)
     return res.json(formattedSchedule || [])
   } catch (error) {
@@ -381,16 +388,18 @@ app.get('/v1/scheduleitems', async (req, res) => {
   console.log('Fetching schedule items...')
   try {
     const category = req.query.category
-    const since = req.query.since || new Date(new Date().setHours(0, 0, 0, 0)).toISOString()
-    const till = req.query.till || new Date(new Date().setHours(23, 59, 59, 999)).toISOString()
     if (!category) {
       return res.status(400).json({ error: 'Category query parameter is required' })
     }
+    const since = req.query.since || new Date().toISOString()
+    const till = req.query.till || new Date().toISOString()
+
     const categoryData = categories[category]
     if (!categoryData) {
       return res.status(400).json({ error: 'Invalid category' })
     }
-    const streams = await fetchFromTwitch(`https://api.twitch.tv/helix/streams?game_id=${categoryData.id}`, {
+    const streams = await fetchFromTwitch('https://api.twitch.tv/helix/streams', {
+      game_id: categoryData.id,
       first: 100,
     })
     const broadcasterIds = getBroadcasterIds(streams)
@@ -406,8 +415,6 @@ app.get('/v1/scheduleitems', async (req, res) => {
   }
 })
 
-// ------------ VIDEOS ------------
-
 // Get videos by game ID
 app.get('/v1/videos/:game_id', async (req, res) => {
   console.log('Fetching videos...')
@@ -422,7 +429,6 @@ app.get('/v1/videos/:game_id', async (req, res) => {
       thumbnail_url: video.thumbnail_url?.replace('{width}', '960')?.replace('{height}', '540'),
     }))
     console.log(`Fetched ${videos.length} videos for game ID ${game_id}`)
-    console.log('adjusted videos: ', adjustedVideos)
     if (adjustedVideos && adjustedVideos.length > 0) {
       return res.json(adjustedVideos || [])
     } else {
@@ -433,8 +439,6 @@ app.get('/v1/videos/:game_id', async (req, res) => {
     return res.status(500).json({ error: 'Failed to fetch videos' })
   }
 })
-
-// ------------ CHANNELS ------------
 
 // List default channels
 app.get('/v1/channels', (req, res) => {
@@ -449,12 +453,12 @@ app.get('/v1/search/channels', async (req, res) => {
     if (!query) {
       return res.status(400).json({ error: 'Search query is required' })
     }
-    const channels = await fetchFromTwitch('https://api.twitch.tv/helix/search/channels', {
+    const channelsResult = await fetchFromTwitch('https://api.twitch.tv/helix/search/channels', {
       query: query,
       first: 20,
       live_only: false,
     })
-    const formattedChannels = channels.map((channel) => ({
+    const formattedChannels = channelsResult.map((channel) => ({
       id: channel.id,
       displayName: channel.display_name,
       name: channel.broadcaster_login,
@@ -471,8 +475,6 @@ app.get('/v1/search/channels', async (req, res) => {
   }
 })
 
-// ------------ BROADCASTER ------------
-
 // Get broadcaster by ID
 app.get('/v1/broadcasters/:broadcaster_id', async (req, res) => {
   console.log('Fetching channel information...')
@@ -482,10 +484,12 @@ app.get('/v1/broadcasters/:broadcaster_id', async (req, res) => {
       return res.status(400).json({ error: 'Broadcaster ID is required' })
     }
     const [channelData, scheduleData] = await Promise.all([
-      fetchFromTwitch(`https://api.twitch.tv/helix/channels`, {
+      fetchFromTwitch('https://api.twitch.tv/helix/channels', {
         broadcaster_id: broadcasterId,
       }),
-      fetchFromTwitch(`https://api.twitch.tv/helix/schedule?broadcaster_id=${broadcasterId}`).catch((error) => {
+      fetchFromTwitch('https://api.twitch.tv/helix/schedule', {
+        broadcaster_id: broadcasterId,
+      }).catch((error) => {
         console.error('Error fetching scheduled streams:', error)
         return []
       }),
@@ -494,28 +498,27 @@ app.get('/v1/broadcasters/:broadcaster_id', async (req, res) => {
     if (!channel) {
       return res.status(404).json({ error: 'Broadcaster not found' })
     }
-    const formattedSchedule = scheduleData?.segments?.map((segment) => ({
-      id: segment.id,
-      startTime: segment.start_time,
-      endTime: segment.end_time,
-      title: segment.title,
-      isRecurring: segment.is_recurring,
-    }))
+    const formattedSchedule =
+      scheduleData?.segments?.map((segment) => ({
+        id: segment.id,
+        startTime: segment.start_time,
+        endTime: segment.end_time,
+        title: segment.title,
+        isRecurring: segment.is_recurring,
+      })) || []
     return res.json({
       id: channel.broadcaster_id,
       name: channel.broadcaster_name,
       category_name: channel.game_name,
       category_id: channel.game_id,
       tags: channel.tags || [],
-      schedule: formattedSchedule || [],
+      schedule: formattedSchedule,
     })
   } catch (error) {
     console.error('Error fetching channel information:', error)
     return res.status(500).json({ error: 'Failed to fetch channel information' })
   }
 })
-
-// ------------ TIMESLOTS ------------
 
 // Get timeslots by category
 app.get('/v1/timeslots/:category_id', async (req, res) => {
@@ -525,13 +528,8 @@ app.get('/v1/timeslots/:category_id', async (req, res) => {
     if (!categoryId) {
       return res.status(400).json({ error: 'Category ID is required' })
     }
-
-    // Videos are now returned as an array, not a JSON string
     const videos = await fetchVideosByCategoryId(categoryId)
-
-    // Make sure videos is always an array
     const videoArray = Array.isArray(videos) ? videos : []
-
     const schedule = createSchedule(videoArray, categoryId)
     console.log(`Fetched ${schedule.length} timeslots for category ID ${categoryId}`)
     res.json(schedule || [])
@@ -547,12 +545,9 @@ app.get('/v1/epg', async (req, res) => {
     const epg = []
     const schedulePromises = channels.map(async (channel) => {
       const videos = await fetchVideosByCategoryId(channel.uuid)
-
-      // Make sure videos is always an array
       const videoArray = Array.isArray(videos) ? videos : []
-
       const schedule = createSchedule(videoArray, channel.uuid)
-      console.log(`scheduled ${schedule.length} timeslots for ${channel.title}`)
+      console.log(`Scheduled ${schedule.length} timeslots for ${channel.title}`)
       return schedule
     })
 
@@ -573,21 +568,19 @@ app.get('/v1/epg', async (req, res) => {
   }
 })
 
-// ------------ AUTH ------------
-
 // backend auth routes
 app.post('/auth/twitch/callback', async (req, res) => {
-  const { code, code_verifier } = req.body
-
-  if (!code || !code_verifier) {
-    return res.status(400).json({ error: 'Missing required parameters' })
-  }
-
   try {
+    const { code, code_verifier } = req.body
+
+    if (!code || !code_verifier) {
+      return res.status(400).json({ error: 'Missing required parameters' })
+    }
+
     const response = await axios.post('https://id.twitch.tv/oauth2/token', null, {
       params: {
-        client_id: process.env.TWITCH_CLIENT_ID,
-        client_secret: process.env.TWITCH_CLIENT_SECRET,
+        client_id: TWITCH_CLIENT_ID,
+        client_secret: TWITCH_CLIENT_SECRET,
         code,
         code_verifier,
         grant_type: 'authorization_code',
@@ -601,6 +594,12 @@ app.post('/auth/twitch/callback', async (req, res) => {
   }
 })
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err)
+  res.status(500).json({ error: 'Internal Server Error' })
+})
+
 // ------------ SERVER ------------
 
-app.listen(PORT, () => console.log(`Server is running in port ${PORT}`))
+app.listen(PORT, () => console.log(`Server is running on port ${PORT}`))
