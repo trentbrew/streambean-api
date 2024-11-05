@@ -62,6 +62,7 @@ async function fetchFromTwitch(url, params = {}) {
     headers: {
       'Client-ID': TWITCH_CLIENT_ID,
       Authorization: `Bearer ${twitchAccessToken}`,
+      'Content-Type': 'application/json',
     },
     params,
   })
