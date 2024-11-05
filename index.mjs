@@ -421,7 +421,12 @@ app.get('/v1/videos/:game_id', async (req, res) => {
       thumbnail_url: video.thumbnail_url?.replace('{width}', '960')?.replace('{height}', '540'),
     }))
     console.log(`Fetched ${videos.length} videos for game ID ${game_id}`)
-    return res.json(adjustedVideos || [])
+    console.log('adjusted videos: ', adjustedVideos)
+    if (adjustedVideos && adjustedVideos.length > 0) {
+      return res.json(adjustedVideos || [])
+    } else {
+      return res.status(404).json({ error: 'No videos found' })
+    }
   } catch (error) {
     console.error('Error fetching videos:', error)
     return res.status(500).json({ error: 'Failed to fetch videos' })
