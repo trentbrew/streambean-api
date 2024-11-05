@@ -240,7 +240,7 @@ app.get('/player/video/:video_id', (req, res) => {
   if (!videoId) {
     return res.status(400).json({ error: 'Video ID is required' })
   }
-  const videoUrl = `https://player.twitch.tv/?video=${videoId}&parent=${req.hostname}`
+  const videoUrl = `https://player.twitch.tv/?video=${videoId}&parent=streambean.tv&parent=localhost`
   const iframeContent = `
         <!DOCTYPE html>
         <html lang="en">
