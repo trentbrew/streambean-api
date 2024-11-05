@@ -66,7 +66,7 @@ async function fetchFromTwitch(url, params = {}) {
     },
     params,
   })
-  return response.data.data
+  return JSON.parse(JSON.stringify(response.data.data))
 }
 
 function getBroadcasterIds(responseArray) {
