@@ -240,7 +240,7 @@ app.get('/player/video/:video_id', (req, res) => {
   if (!videoId) {
     return res.status(400).json({ error: 'Video ID is required' })
   }
-  const videoUrl = `https://player.twitch.tv/?video=${videoId}&parent=api.streambean.tv&parent=watch.streambean.tv&parent=www.streambean.tv&parent=streambean.tv&parent=localhost`
+  const videoUrl = `https://player.twitch.tv/?video=${videoId}&parent=api.streambean.tv&parent=watch.streambean.tv&parent=www.streambean.tv&parent=streambean.tv&parent=localhost&streambeanapi.vercel.app`
   const iframeContent = `
         <!DOCTYPE html>
         <html lang="en">
